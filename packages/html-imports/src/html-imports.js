@@ -66,6 +66,8 @@
    */
   const replaceScripts = (fragment) => {
     forEach(QSA(fragment, 'template'), (template) => {
+      if (!(template instanceof HTMLTemplateElement))
+        return;
       forEach(QSA(template.content, scriptsSelector), (script) => {
         const clone =
           /** @type {!HTMLScriptElement} */
