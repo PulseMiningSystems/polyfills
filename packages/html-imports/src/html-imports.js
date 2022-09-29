@@ -175,6 +175,9 @@
       } else {
         const request = new XMLHttpRequest();
         request.open('GET', url, Xhr.async);
+        request.onerror = () => {
+          fail(null);
+        };
         request.onload = () => {
           // Servers redirecting an import can add a Location header to help us
           // polyfill correctly. Handle relative and full paths.
