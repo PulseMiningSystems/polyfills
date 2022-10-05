@@ -156,11 +156,11 @@
     /**
      * @param {!string} url
      * @param {!function(!string, string=)} success
-     * @param {!function(!string)} fail
+     * @param {!function()} fail
      */
     load(url, success, fail) {
       if (!url) {
-        fail('error: href must be specified');
+        fail();
       } else if (url.match(/^data:/)) {
         // Handle Data URI Scheme
         const pieces = url.split(',');
@@ -173,39 +173,44 @@
         }
         success(resource);
       } else {
-        const request = new XMLHttpRequest();
-        request.open('GET', url, Xhr.async);
-        request.onerror = () => {
-          fail(null);
-        };
-        request.onload = () => {
-          // Servers redirecting an import can add a Location header to help us
-          // polyfill correctly. Handle relative and full paths.
-          // Prefer responseURL which already resolves redirects
-          // https://xhr.spec.whatwg.org/#the-responseurl-attribute
-          let redirectedUrl =
-            (request.responseURL || request.getResponseHeader('Location')) ??
-            undefined;
-          if (redirectedUrl && redirectedUrl.indexOf('/') === 0) {
-            // In IE location.origin might not work
-            // https://connect.microsoft.com/IE/feedback/details/1763802/location-origin-is-undefined-in-ie-11-on-windows-10-but-works-on-windows-7
-            const origin =
-              location.origin || location.protocol + '//' + location.host;
-            redirectedUrl = origin + redirectedUrl;
-          }
-          const resource = /** @type {string} */ (request.response ||
-            request.responseText);
-          if (
-            request.status === 304 ||
-            request.status === 0 ||
-            (request.status >= 200 && request.status < 300)
-          ) {
-            success(resource, redirectedUrl);
-          } else {
-            fail(resource);
-          }
-        };
-        request.send();
+        function get(useCache) {
+          let redirectedUrl = null;
+          return fetch(url, { cache: useCache ? 'default' : 'reload' })
+            .then(res => {
+              if (!res.ok)
+                throw new Error(`HTTP ${res.status}`);
+              redirectedUrl = res.url;
+              return res.text();
+            })
+            .then(resource => {
+              return { resource, redirectedUrl };
+            });
+        }
+
+        function retryTime(attempt) {
+          return Math.random() * 100 * 2 ** attempt;
+        }
+
+        function sleep(ms) {
+          return new Promise(res => setTimeout(res, ms));
+        }
+
+        function attemptGet(attempt = 0) {
+          return get(attempt === 0)
+            .then(({ resource, resourceUrl }) => {
+              success(resource, resourceUrl);
+            }, err => {
+              console.error(err);
+              if (attempt >= 2) {
+                fail();
+              } else {
+                return sleep(retryTime(attempt))
+                  .then(() => attemptGet(attempt + 1));
+              }
+            });
+        }
+
+        attemptGet();
       }
     },
   };
